@@ -1,91 +1,89 @@
-import easyocr
-import numpy as np
 import pyautogui as py
+import numpy as np
+import time
+import keyboard
+from paddleocr import PaddleOCR
 import re
 
-# Initialize the EasyOCR reader
-reader = easyocr.Reader(['en'])
 
-# Constants
-B_PIXEL_VALUE = 214
-I_PIXEL_VALUE = 37
-N_PIXEL_VALUES = 101
-G_PIXEL_VALUE = 220
-O_PIXEL_VALUE = 50
+# ANSI escape codes for text colors
+BLACK = "\033[30m"
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+RESET = "\033[0m"
 
-# Coordinates of each square on the board
-b_coordinates = [(770, 401), (770, 501), (770, 601), (770, 701), (770, 801)]
-i_coordinates = [(870, 401), (870, 501), (870, 601), (870, 701), (870, 801)]
-n_coordinates = [(970, 401), (970, 501), (970, 601), (970, 701), (970, 801)]
-g_coordinates = [(1070, 401), (1070, 501), (1070, 601), (1070, 701), (1070, 801)]
-o_coordinates = [(1170, 401), (1170, 501), (1170, 601), (1170, 701), (1170, 801)]
+a = time.time()
+ocr = PaddleOCR(show_log = False, max_text_length=3, det_db_score_mode='fast', det=True, rec=True, cls=True, det_db_thresh=0.5, use_gpu=True, ocr=True, lang='en', use_angle_cls=True ) # need to run only once to load model into memory
 
-def checkBingo():
-    if py.pixel(1110, 930)[0] == 251:
-        py.click(1110, 930)
+print("Starting ... ")
 
-def update_list(value, value_list):
-    if value in value_list:
-        curr_index = value_list.index(value)
-        value_list.pop(curr_index)
-        value_list.insert(curr_index, "X")
-        print(f"{value} value found, Value list: {value_list}")
+cords = [(755, 375), (855, 375), (955, 375), (1055, 375), (1155, 375), (755, 475), (855, 475), (955, 475), (1055, 475), (1155, 475), (755, 575), (855, 575), (1055, 575), (1155, 575), (755, 675), (855, 675), (955, 675), (1055, 675), (1155, 675), (755, 775), (855, 775), (955, 775), (1055, 775), (1155, 775)]
 
 
-def read_value_from_image(image):
-    results = reader.readtext(image)
-    if results:
-        extracted_text = ''.join(re.findall(r'[0-9]', results[0][1]))
-    else:
-        extracted_text = 'X'
-    return extracted_text
+def currentValue(image):
+    result = ocr.ocr(np.array(image), cls=True)
+    # Extract and print the detected digits
+    if result:
+        for idx in range(len(result)):
+                res = result[idx]
+                for line in res:
+                    res = ''.join(re.findall(r'[BIiNGOo0-9]', line[-1][0]))
+                    return res
+    return "-"
+
+def read_value_from_image(image1):
+    # Load the image using OpenCV
+    result = ocr.ocr(np.array(image1))
+    listOfNumebrs = []
+    # Extract and print the detected digits
+    for idx in range(len(result)):
+            res = result[idx]
+            for line in res:
+                listOfNumebrs.append(line[-1][0])
+    
+    return listOfNumebrs
+
+input("Press Entre... ")
+
+detected_digits = read_value_from_image(py.screenshot(region=(733, 340 , 470, 470)))
+
+print("Start to detect ", time.time() - a, " time taken!")
+
+print(detected_digits)
 
 
-def save_character_screenshots(character, x, y, width, height):
-    extracted_values = []
-    for i in range(1, 6):
-        screenshot = py.screenshot(region=(x, y + (i - 1) * 95, width, height))
-        numpy_image = np.array(screenshot)
-        value = read_value_from_image(numpy_image)
-        extracted_values.append(value)
-    return extracted_values
+
+while keyboard.is_pressed('ctrl') != True:
+    s = time.time()
+
+    now_value = currentValue(py.screenshot(region=((1108, 214, 57, 35))))
+    if now_value in detected_digits:
+        py.click(cords[detected_digits.index(now_value)])
+        print("Found a Value in:", GREEN + now_value + RESET, "in:", "{:.2f}".format(time.time() - s))
+        detected_digits.insert(detected_digits.index(now_value), ('X'))
+        detected_digits.pop(detected_digits.index(now_value))
+        print(detected_digits)
+        time.sleep(1.25)
+    time.sleep(0.25)
 
 
-# Initialize value lists
-b_list = save_character_screenshots("B", 740, 375, 70, 66)
-i_list = save_character_screenshots("I", 830, 370, 70, 70)
-n_list = save_character_screenshots("N", 924, 370, 70, 70)
-o_list = save_character_screenshots("O", 1120, 370, 70, 70)
-g_list = save_character_screenshots("G", 1020, 370, 70, 70)
+listOfNumebrs = []
 
 
-def click_and_update(pixel_value, value_list, coord_list, now_value):
-    if py.pixel(1129, 285)[0] == pixel_value and now_value in value_list and now_value != "X":
-        py.click(coord_list[value_list.index(now_value)])
-        update_list(now_value, value_list)
+while keyboard.is_pressed("ctrl") == True:
+    s = time.time()
+    
+    # Capture the current value every 0.5 seconds the other game currentValue(py.screenshot(region=(1105, 224, 60, 40)))
+    now_value = currentValue(py.screenshot(region=(1110, 212, 50, 35)))
+    if now_value in listOfNumebrs:
+            py.click(cords[listOfNumebrs.index(now_value)])
+            print("Found a Value in:", GREEN + now_value + RESET, "in:", "{:.2f}".format(time.time() - s))
+            listOfNumebrs.insert(listOfNumebrs.index(now_value), ('X'))
+            listOfNumebrs.pop(listOfNumebrs.index(now_value))
+            print(listOfNumebrs)
 
-
-def click_curr_value():
-    screenshot = py.screenshot(region=(1107, 223, 57, 44))
-    numpy_screenshot = np.array(screenshot)
-    now_value = read_value_from_image(numpy_screenshot)
-
-    click_and_update(B_PIXEL_VALUE, b_list, b_coordinates, now_value)
-    click_and_update(I_PIXEL_VALUE, i_list, i_coordinates, now_value)
-    click_and_update(G_PIXEL_VALUE, g_list, g_coordinates, now_value)
-    click_and_update(O_PIXEL_VALUE, o_list, o_coordinates, now_value)
-    click_and_update(N_PIXEL_VALUES, n_list, n_coordinates, now_value)
-    return now_value
-
-
-def is_game_over():
-    return all(x == 'X' for x in b_list) and all(x == 'X' for x in i_list) and \
-        all(x == 'X' for x in n_list) and all(x == 'X' for x in g_list) and \
-        all(x == 'X' for x in o_list)
-
-
-while not is_game_over():
-    now_value = click_curr_value()
-    checkBingo()
-
-print("Game Over!")
