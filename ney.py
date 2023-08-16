@@ -1,11 +1,48 @@
-import cv2
-import easyocr
 import pyautogui as py
 import numpy as np
 import time
 import keyboard
-import threading
-from queue import Queue
+from paddleocr import PaddleOCR
+import re
+
+def find_best_bingo_move(grid):
+    winning_patterns = [
+        [0, 1, 2, 3, 4],   # Top row
+        [5, 6, 7, 8, 9],   # Second row
+        [10, 11, 12, 13, 14],  # Third row
+        [15, 16, 17, 18, 19],  # Fourth row
+        [20, 21, 22, 23, 24],  # Fifth row
+        [0, 5, 10, 15, 20],  # First column
+        [1, 6, 11, 16, 21],  # Second column
+        [2, 7, 12, 17, 22],  # Third column
+        [3, 8, 13, 18, 23],  # Fourth column
+        [4, 9, 14, 19, 24],  # Fifth column
+        [0, 6, 12, 18, 24],  # Diagonal from top-left to bottom-right
+        [4, 8, 12, 16, 20]   # Diagonal from top-right to bottom-left
+    ]
+    
+    potential_best_moves = []  # Maintain a list of potential best moves
+    max_matches = 0
+    
+    for move in range(25):
+        if grid[move] == 'X':
+            continue
+        
+        num_matches = 0
+        for pattern in winning_patterns:
+            if move in pattern:
+                matches = sum(1 for index in pattern if grid[index] == 'X')
+                if matches > num_matches:
+                    num_matches = matches
+        
+        if num_matches >= max_matches:  # Use >= to account for cases with multiple potential best moves
+            max_matches = num_matches
+            potential_best_moves.append(move)
+    
+    # Sort the potential best moves by the number of matches
+    potential_best_moves.sort(key=lambda move: -max_matches)
+    
+    return potential_best_moves[:4]  # Return the top 4 potential best moves
 
 # ANSI escape codes for text colors
 BLACK = "\033[30m"
@@ -19,97 +56,71 @@ WHITE = "\033[37m"
 RESET = "\033[0m"
 
 a = time.time()
+ocr = PaddleOCR(show_log = False, max_text_length=3, det_db_score_mode='fast', det=True, rec=True, cls=True, det_db_thresh=0.5, use_gpu=True, ocr=True, lang='en', use_angle_cls=True ) # need to run only once to load model into memory
+
 print("Starting ... ")
-# Load the EasyOCR reader
-reader = easyocr.Reader(lang_list=['en'])
-print("Finish loading ... ")
-cords = [(755, 375), (855, 375), (955, 375), (1055, 375), (1155, 375), (755, 475), (855, 475), (955, 475), (1055, 475), (1155, 475), (755, 575), (955, 575), (1055, 575), (1155, 575), (755, 675), (855, 675), (955, 675), (1055, 675), (1155, 675), (755, 775), (855, 775), (955, 775), (1055, 775), (1155, 775)]
 
-def compare_images():
-    region = np.array(py.screenshot(region=(905, 840, 80, 100)))
-    region_gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-    
-    template_names = ["extra.png","pick.png"]
-    
-    for template_name in template_names:
-        template_path = "C:\\Users\\shbat\\Desktop\\bot\\" + template_name
-        template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-        result = cv2.matchTemplate(region_gray, template, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, _ = cv2.minMaxLoc(result)
-        
-        if max_val >= 0.8:
-            py.click(940, 894)
-            break  # Click once and break out of the loop
+cords = [(755, 375), (855, 375), (955, 375), (1055, 375), (1155, 375), (755, 475), (855, 475), (955, 475), (1055, 475), (1155, 475), (755, 575), (855, 575), (0,0),(1055, 575), (1155, 575), (755, 675), (855, 675), (955, 675), (1055, 675), (1155, 675), (755, 775), (855, 775), (955, 775), (1055, 775), (1155, 775)]
 
-
-import threading
 
 def currentValue(image):
-    result_queue = Queue()
-
-    def sleep_and_read(image):
-        time.sleep(0.4)  # Sleep for 1 second
-        result = reader.readtext(np.array(image))
-        result_queue.put(result)
-
-    thread = threading.Thread(target=sleep_and_read, args=(image,))
-    thread.start()
-    thread.join()  # Wait for the thread to finish
-
-    if not result_queue.empty():
-        result = result_queue.get()
-        if result:
-            extracted_text = result[0][1]
-            return extracted_text
-    extracted_text = '-'
-    return extracted_text
+    result = ocr.ocr(np.array(image), cls=True)
+    # Extract and print the detected digits
+    if result:
+        for idx in range(len(result)):
+                res = result[idx]
+                for line in res:
+                    res = ''.join(re.findall(r'[BIiNGOo0-9]', line[-1][0]))
+                    return res
+    return "-"
 
 def read_value_from_image(image1):
-    
     # Load the image using OpenCV
-    image = cv2.imread(image1)
-
-    # Convert the image to grayscale
-    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # Perform thresholding to convert the image to black and white
-    _, binary_image = cv2.threshold(gray_image, 128, 255, cv2.THRESH_BINARY_INV)
-
-    # Perform text detection using EasyOCR
-    results = reader.readtext(binary_image)
-
+    result = ocr.ocr(np.array(image1))
+    listOfNumebrs = []
     # Extract and print the detected digits
-    detected_digits = []
-    for (bbox, text, prob) in results:
-        x_min, y_min = map(int, bbox[0])
-        x_max, y_max = map(int, bbox[2])
-        detected_digits.append((text, (x_min, y_min, x_max, y_max)))
+    for idx in range(len(result)):
+            res = result[idx]
+            for line in res:
+                listOfNumebrs.append(line[-1][0])
     
-    return detected_digits
+    return listOfNumebrs
+
+def check(grid, newgrid):
+    for i in grid:
+        if i not in newgrid:
+            index = grid.index(i)
+            grid[index] = "X"
+    return grid
 
 
+input("Press Entre... ")
+
+detected_digits = read_value_from_image(py.screenshot(region=(733, 340 , 470, 470)))
 
 print("Start to detect ", time.time() - a, " time taken!")
-py.screenshot(region=(733, 340 , 470, 470)).save("C:\\Users\\shbat\\Desktop\\bot\\1.png")
 
-detected_digits = read_value_from_image("C:\\Users\\shbat\\Desktop\\bot\\1.png")
+#print(detected_digits)
 
-listOfNumebrs = []
-for i, k in detected_digits:
-    listOfNumebrs.append(i)
-    
+grid = detected_digits
+grid.insert(12, "X")
+print(grid)
 
-print(listOfNumebrs)
-
-while keyboard.is_pressed("ctrl") != True:
+while keyboard.is_pressed('ctrl') != True:
     s = time.time()
-    
-    # Capture the current value every 0.5 seconds
-    now_value = currentValue(py.screenshot(region=(1110, 212, 50, 35)))
-    if now_value in listOfNumebrs:
-            py.click(cords[listOfNumebrs.index(now_value)])
-            print("Found a Value in:", GREEN + now_value + RESET, "in:", "{:.2f}".format(time.time() - s))
-            listOfNumebrs.insert(listOfNumebrs.index(now_value), ('X'))
-            listOfNumebrs.pop(listOfNumebrs.index(now_value))
-            print(listOfNumebrs)
 
+    now_value = currentValue(py.screenshot(region=((1108, 214, 57, 35))))
+    if now_value in grid:
+        py.click(cords[grid.index(now_value)])
+        print("Found a Value in:", GREEN + now_value + RESET, "in:", "{:.2f}".format(time.time() - s))
+        grid.insert(grid.index(now_value), ('X'))
+        grid.pop(grid.index(now_value))
+        #print(grid)
+        grid = check(grid, read_value_from_image(py.screenshot(region=(733, 340 , 470, 470))))
+        best = find_best_bingo_move(grid)
+        if best is not None:
+            for i, k in enumerate(best):
+                print("\033[93m" + grid[k] + "\033[0m", end=" ")
+            print()
+        time.sleep(0.10)
+    time.sleep(0.30)
